@@ -69,7 +69,11 @@ export class NatsJetStreamServer
           try {
             const data = this.codec.decode(msg.data);
             const context = new NatsJetStreamContext([msg]);
-            this.send(from(eventHandler(data, context)), () => null);
+            if (context && context.message && context.message.subject) {
+              if (subject === context.message.subject) {
+                 this.send(from(eventHandler(data, context)), () => null);   
+              }
+            }
           } catch (err) {
             this.logger.error(err.message, err.stack);
             // specifies that you failed to process the server and instructs
