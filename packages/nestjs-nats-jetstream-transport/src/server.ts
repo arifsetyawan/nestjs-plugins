@@ -57,6 +57,9 @@ export class NatsJetStreamServer
 
     const js = this.nc.jetstream(this.options.jetStreamOptions);
 
+    console.log('eventHandlers length', eventHandlers.length);
+    
+
     for (const [subject, eventHandler] of eventHandlers) {
       const consumerOptions = serverConsumerOptionsBuilder(
         this.options.consumerOptions,
@@ -70,8 +73,11 @@ export class NatsJetStreamServer
             const data = this.codec.decode(msg.data);
             const context = new NatsJetStreamContext([msg]);
             if (context && context.message && context.message.subject) {
+              console.log('LOG SUBJECT LIB',subject, context.message.subject)
               if (subject === context.message.subject) {
                  this.send(from(eventHandler(data, context)), () => null);   
+              } else {
+                continue
               }
             }
           } catch (err) {
