@@ -58,7 +58,9 @@ export class NatsJetStreamServer
     const js = this.nc.jetstream(this.options.jetStreamOptions);
 
     console.log('eventHandlers length', eventHandlers.length);
-    
+
+    let contextSubject = '';
+    let isContextSubjectMatch = false;
 
     for (const [subject, eventHandler] of eventHandlers) {
       const consumerOptions = serverConsumerOptionsBuilder(
@@ -67,36 +69,41 @@ export class NatsJetStreamServer
       );
       const subscription = await js.subscribe(subject, consumerOptions);
       this.logger.log(`Subscribed to ${subject} events`);
-      const done = (async () => {
-        for await (const msg of subscription) {
-          try {
-            const data = this.codec.decode(msg.data);
-            const context = new NatsJetStreamContext([msg]);
-            if (context && context.message && context.message.subject) {
-              console.log('LOG SUBJECT LIB',subject, context.message.subject)
-              if (subject === context.message.subject) {
-                 this.send(from(eventHandler(data, context)), () => null);   
-              } else {
-                continue
-              }
-            }
-          } catch (err) {
-            this.logger.error(err.message, err.stack);
-            // specifies that you failed to process the server and instructs
-            // the server to not send it again (to any consumer)
-            msg.term();
-          }
-        }
-      })();
-      done.then(() => {
-        // if the connection is closed or draining, we don't need to unsubscribe as the subscription will be unsubscribed automatically
-        if (this.nc.isDraining() || this.nc.isClosed()) {
-          return;
-        }
-        subscription.destroy();
 
-        this.logger.log(`Unsubscribed ${subject}`);
-      });
+      for await (const msg of subscription) {
+        try {
+          const data = this.codec.decode(msg.data);
+          const context = new NatsJetStreamContext([msg]);
+          
+          if (context && context.message && context.message.subject) {
+            console.log('LOG SUBJECT LIB',subject, context.message.subject)
+            if (subject === context.message.subject) {
+              const done = (async () => {
+                this.send(from(eventHandler(data, context)), () => null);   
+              })();
+              done.then(() => {
+                // if the connection is closed or draining, we don't need to unsubscribe as the subscription will be unsubscribed automatically
+                if (this.nc.isDraining() || this.nc.isClosed()) {
+                  return;
+                }
+                subscription.destroy();
+
+                this.logger.log(`Unsubscribed ${subject}`);
+              });
+            } else {
+              continue
+            }
+          } else {
+            throw new Error('No subject found in context message')
+          }
+
+        } catch (err) {
+          this.logger.error(err.message, err.stack);
+          // specifies that you failed to process the server and instructs
+          // the server to not send it again (to any consumer)
+          msg.term();
+        }
+      }
     }
   }
 
