@@ -59,39 +59,34 @@ export class NatsJetStreamServer
 
     console.log('eventHandlers length', eventHandlers.length);
 
-    let contextSubject = '';
-    let isContextSubjectMatch = false;
-
     for (const [subject, eventHandler] of eventHandlers) {
       const consumerOptions = serverConsumerOptionsBuilder(
         this.options.consumerOptions,
         subject,
       );
+
+      console.log('consumerOptions', consumerOptions)
+
+      let data = null;
+      let context: NatsJetStreamContext;
+      let contextSubject = '';
+      let isContextSubjectMatch = false;
+
       const subscription = await js.subscribe(subject, consumerOptions);
       this.logger.log(`Subscribed to ${subject} events`);
 
       for await (const msg of subscription) {
         try {
-          const data = this.codec.decode(msg.data);
-          const context = new NatsJetStreamContext([msg]);
+          data = this.codec.decode(msg.data);
+          context = new NatsJetStreamContext([msg]);
           
           if (context && context.message && context.message.subject) {
             console.log('LOG SUBJECT LIB',subject, context.message.subject)
+            contextSubject = context.message.subject;
             if (subject === context.message.subject) {
-              const done = (async () => {
-                this.send(from(eventHandler(data, context)), () => null);   
-              })();
-              done.then(() => {
-                // if the connection is closed or draining, we don't need to unsubscribe as the subscription will be unsubscribed automatically
-                if (this.nc.isDraining() || this.nc.isClosed()) {
-                  return;
-                }
-                subscription.destroy();
-
-                this.logger.log(`Unsubscribed ${subject}`);
-              });
+              isContextSubjectMatch = true;
             } else {
-              continue
+              continue;
             }
           } else {
             throw new Error('No subject found in context message')
@@ -103,6 +98,19 @@ export class NatsJetStreamServer
           // the server to not send it again (to any consumer)
           msg.term();
         }
+      }
+
+      try {
+        if (isContextSubjectMatch) {
+          this.send(from(eventHandler(data, context)), () => null);   
+        }
+      } catch (err) {
+        this.logger.error(err.message, err.stack);
+        if (this.nc.isDraining() || this.nc.isClosed()) {
+          return;
+        }
+        subscription.destroy();
+        this.logger.log(`Unsubscribed ${subject}`);
       }
     }
   }
