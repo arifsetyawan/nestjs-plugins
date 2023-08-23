@@ -1,6 +1,6 @@
 {
   "name": "@wallex/nestjs-nats-jetstream-transport",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "Nats JetStream Transport for NestJS",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
